@@ -1,0 +1,14 @@
+{
+  "name": "romo-scraper",
+  "version": "0.0.1",
+  "description": "scraper",
+  "main": "scraper.js",
+  "scripts": {
+    "start": "node scraper.js"
+  },
+  "dependencies": {
+    "puppeteer": "^23.5.0",
+    "request": "^2.88.2",
+    "x-ray": "^2.3.4"
+  }
+}
