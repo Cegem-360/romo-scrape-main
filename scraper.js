@@ -11,10 +11,10 @@ const x = Xray({
     }
   }
 })
-.delay('2s', '3s')
-.concurrency(2)
-.throttle(2, '1s')
-.timeout(30000);
+.delay('10s', '12s')
+.concurrency(1)
+// .throttle(2, '1s')
+.timeout(20000);
 
 const mainUrl = 'https://www.cooperklima.hu/lakossagi-termekek/split-klimak';
 const familyUrls = [];
@@ -59,73 +59,90 @@ x(mainUrl, ['.categories .category-card__pic-url@href'])((err, urls) => {
             await page.goto(productUrl, { waitUntil: 'networkidle2' });
 
             // Click on the product image to load the PhotoSwipe gallery
-            const imageSelector = '.carousel-cell';
+            const imageSelector = '#main_image';
             const gallerySelector = '.pswp__img';
 
             const imageExists = await page.$(imageSelector);
+            let gallery = [];
             if (imageExists) {
               await page.click(imageSelector);
 
               // Wait for the PhotoSwipe gallery to load
-              await page.waitForSelector(gallerySelector, { timeout: 30000 });
+              try {
+                await page.waitForSelector(gallerySelector, { timeout: 30000 });
 
-              // Scrape the image URLs from the PhotoSwipe gallery
-              const gallery = await page.evaluate(() => {
-                const images = [];
-                document.querySelectorAll('.pswp__img').forEach(img => {
-                  images.push(img.src);
-                });
-                return images;
-              });
-
-              // Scrape other product details using Xray
-              x(productUrl, '#page_artdet_content', {
-                sku: '.artdet__sku-value',
-                title: 'h1.artdet__name',
-                gallery: gallery, // Use the scraped gallery images
-                price: '#price_net_brutto_CH__unas__S09FTXLA2__unas__NG',
-                mainAttributes: x('.spec-param-right .artdet__spec-param', [{
-                  name: '.artdet__spec-param-title .param-name',
-                  value: '.artdet__spec-param-value'
-                }]),
-                furtherAttributes: x('.data__items .data__item-param', [{
-                  name: '.data__item-title .param-name',
-                  value: '.data__item-value .artdet__param-value'
-                }]),
-                description: x('#pane-details .tab-pane__container', 'ul', [{
-                  feature: 'li'
-                }]),
-                variants: {
-                  performance: x('#artdet__type .product-type__item.type--text .product-type__values .product-type__value', [{
-                    name: '.product-type__option-name',
-                    url: 'a@href'
-                  }]),
-                  color: x('#artdet__type .product-type__item.type--icon .product-type__values .product-type__value', [{
-                    name: '.product-type__option-name img@alt',
-                    url: 'a@href'
-                  }])
-                }
-              })((err, product) => {
-                if (err) {
-                  console.error(`Error fetching product details from ${productUrl}: ${err}`);
-                  return;
-                }
-                results.push(product);
-
-                // Step 4: Save results to a JSON file
-                if (results.length === productUrls.length) {
-                  fs.writeFile('./scrape-results.json', JSON.stringify(results, null, 2), 'utf-8', (err) => {
-                    if (err) {
-                      console.error(`Error writing file: ${err}`);
-                    } else {
-                      console.log('File is written successfully!');
-                    }
+                // Scrape the image URLs from the PhotoSwipe gallery
+                gallery = await page.evaluate(() => {
+                  const images = [];
+                  document.querySelectorAll('.pswp__img').forEach(img => {
+                    images.push(img.src);
                   });
-                }
-              });
+                  return images;
+                });
+              } catch (error) {
+                console.error(`Error loading PhotoSwipe gallery on ${productUrl}: ${error}`);
+              }
             } else {
               console.error(`Image selector not found on ${productUrl}`);
             }
+
+            // Scrape other product details using Xray
+            x(productUrl, '#page_artdet_content', {
+              sku: '.artdet__sku-value',
+              title: 'h1.artdet__name',
+              image: '#main_image@src',
+              gallery: gallery, // Use the scraped gallery images
+              price: '#price_net_brutto_CH__unas__S09FTXLA2__unas__NG',
+              mainAttributes: x('.spec-param-right .artdet__spec-param', [{
+                name: '.artdet__spec-param-title .param-name',
+                value: '.artdet__spec-param-value'
+              }]),
+              furtherAttributes: x('.data__items .data__item-param', [{
+                name: '.data__item-title .param-name',
+                value: '.data__item-value .artdet__param-value'
+              }]),
+              description: '#pane-details .tab-pane__container@html', // Get the original HTML content
+              performance: x('#artdet__type .product-type__item.type--text .product-type__values .product-type__value', [{
+                name: '.product-type__option-name'
+              }]),
+              color: x('#artdet__type .product-type__item.type--icon .product-type__values .product-type__value', [{
+                name: '.product-type__option-name img@alt'
+              }])
+            })((err, product) => {
+              if (err) {
+                console.error(`Error fetching product details from ${productUrl}: ${err}`);
+                return;
+              }
+
+              // Transform mainAttributes and furtherAttributes into key-value pairs
+              const transformAttributes = (attributes) => {
+                const transformed = {};
+                attributes.forEach(attr => {
+                  transformed[attr.name.trim()] = attr.value.trim();
+                });
+                return transformed;
+              };
+
+              product.mainAttributes = transformAttributes(product.mainAttributes);
+              product.furtherAttributes = transformAttributes(product.furtherAttributes);
+
+              // Extract names from performance and color arrays
+              product.performance = product.performance.map(item => item.name.trim());
+              product.color = product.color.map(item => item.name.trim());
+
+              results.push(product);
+
+              // Step 4: Save results to a JSON file
+              if (results.length === productUrls.length) {
+                fs.writeFile('./scrape-results.json', JSON.stringify(results, null, 2), 'utf-8', (err) => {
+                  if (err) {
+                    console.error(`Error writing file: ${err}`);
+                  } else {
+                    console.log('File is written successfully!');
+                  }
+                });
+              }
+            });
           } catch (error) {
             console.error(`Error fetching product details from ${productUrl}: ${error}`);
           }
