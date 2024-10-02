@@ -66,10 +66,19 @@ x(mainUrl, ['.categories .category-card__pic-url@href'])((err, urls) => {
             let gallery = [];
             if (imageExists) {
               await page.click(imageSelector);
+              console.log(`Clicked on image on ${productUrl}`);
+                // check if pswp is initialized using browser context
+                const isPswpInitialized = await page.evaluate(() => {
+                return typeof window.pswp !== 'undefined';
+                });
+                if (!isPswpInitialized) {
+                console.error(`PhotoSwipe gallery not initialized on ${productUrl}`);
+                continue;
+                }
 
               // Wait for the PhotoSwipe gallery to load
               try {
-                await page.waitForSelector(gallerySelector, { timeout: 30000 });
+                await page.waitForSelector(gallerySelector, { timeout: 13000 });
 
                 // Scrape the image URLs from the PhotoSwipe gallery
                 gallery = await page.evaluate(() => {
@@ -101,7 +110,7 @@ x(mainUrl, ['.categories .category-card__pic-url@href'])((err, urls) => {
                 name: '.data__item-title .param-name',
                 value: '.data__item-value .artdet__param-value'
               }]),
-              description: '#pane-details .tab-pane__container@html', // Get the original HTML content
+              description: '#pane-details .container@html', // Get the original HTML content
               performance: x('#artdet__type .product-type__item.type--text .product-type__values .product-type__value', [{
                 name: '.product-type__option-name'
               }]),
@@ -123,8 +132,14 @@ x(mainUrl, ['.categories .category-card__pic-url@href'])((err, urls) => {
                 return transformed;
               };
 
-              product.mainAttributes = transformAttributes(product.mainAttributes);
-              product.furtherAttributes = transformAttributes(product.furtherAttributes);
+              const mainAttributes = transformAttributes(product.mainAttributes);
+              const furtherAttributes = transformAttributes(product.furtherAttributes);
+
+              // Merge mainAttributes and furtherAttributes into the product object
+              const mergedAttributes = { ...mainAttributes, ...furtherAttributes };
+              delete product.mainAttributes;
+              delete product.furtherAttributes;
+              Object.assign(product, mergedAttributes);
 
               // Extract names from performance and color arrays
               product.performance = product.performance.map(item => item.name.trim());
